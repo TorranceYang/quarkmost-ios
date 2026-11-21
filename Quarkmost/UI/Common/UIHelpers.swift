@@ -11,8 +11,9 @@ extension UILabel {
 
     func set(_ text: String, _ style: Typography.Style, color: UIColor, alignment: NSTextAlignment = .natural) {
         var attrs = style.attributes(color: color, alignment: alignment)
-        if numberOfLines != 1, let p = (attrs[.paragraphStyle] as? NSParagraphStyle)?.mutableCopy() as? NSMutableParagraphStyle {
-            p.lineBreakMode = .byWordWrapping
+        if let p = (attrs[.paragraphStyle] as? NSParagraphStyle)?.mutableCopy() as? NSMutableParagraphStyle {
+            // Multi-line labels wrap; single-line ones end in "…" rather than being clipped.
+            p.lineBreakMode = numberOfLines != 1 ? .byWordWrapping : .byTruncatingTail
             attrs[.paragraphStyle] = p
         }
         attributedText = NSAttributedString(string: text, attributes: attrs)

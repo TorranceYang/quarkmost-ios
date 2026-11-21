@@ -31,6 +31,7 @@ final class ConversationViewController: UIViewController {
     private let autocomplete = AutocompleteView()
     private let jumpButton = UIButton(type: .custom)
     private let headerTitle = UILabel(), headerSubtitle = UILabel()
+    private var titleWidthLimit: NSLayoutConstraint?
     private let headerAvatar = AvatarView(size: 28)
 
     private var posts: [String: Post] = [:]
@@ -44,6 +45,8 @@ final class ConversationViewController: UIViewController {
     private var crt: Bool { session.collapsedThreads }
     private var dateLabels: [String: String] = [:]
     private var layoutWidth: CGFloat = 0
+    /// A rebuild was skipped while off screen; run it on the next layout pass.
+    private var needsRebuild = false
     private var page = 0
     private var reachedOldest = false
     private var loadingOlder = false
@@ -230,24 +233,20 @@ final class ConversationViewController: UIViewController {
         row.isUserInteractionEnabled = true
         row.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(headerTapped)))
         row.accessibilityTraits = .button
+        // Cap the title's width so a long name/subtitle truncates instead of crowding the bar buttons
+        // (iOS 26 moves buttons that don't fit into a "⋯" overflow menu).
+        row.translatesAutoresizingMaskIntoConstraints = false
+        titleWidthLimit = row.widthAnchor.constraint(lessThanOrEqualToConstant: 200)
+        titleWidthLimit?.isActive = true
+        for label in [headerTitle, headerSubtitle] {
+            label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            label.lineBreakMode = .byTruncatingTail
+        }
         navigationItem.titleView = row
         navigationItem.backButtonDisplayMode = .minimal
 
         if rootId == nil {
-            navigationItem.rightBarButtonItems = [
-                UIBarButtonItem(image: CompassIcon.image("dots-vertical", size: 24), primaryAction: UIAction { [weak self] _ in
-                    guard let self, let channel = session.channel(channelId) else { return }
-                    presentOptions(ChannelActions.options(for: channel, from: self), title: session.title(for: channel))
-                }),
-                UIBarButtonItem(image: CompassIcon.image("magnify", size: 24), primaryAction: UIAction { [weak self] _ in
-                    guard let self, let channel = session.channel(channelId) else { return }
-                    let term = channel.type == .direct ? "from:\(session.teammateId(of: channel).flatMap { self.session.user($0)?.username } ?? "") "
-                        : "in:\(channel.name) "
-                    Router.shared.search(term)
-                }),
-            ]
-            navigationItem.rightBarButtonItems?[0].accessibilityLabel = "Channel actions"
-            navigationItem.rightBarButtonItems?[1].accessibilityLabel = "Search in channel"
+            configureChannelBarItems()
             Task {
                 memberCount = (try? await session.client.channelStats(id: channelId))?.memberCount
                 refreshHeader()
@@ -257,6 +256,45 @@ final class ConversationViewController: UIViewController {
         }
         headerSubtitle.textColor = theme.sidebarHeaderTextColor.opacity(0.72)
         refreshHeader()
+    }
+
+    /// On the iPhone Duo, iOS stacks the header buttons in the side column beside the status bar.
+    /// With the keyboard up that column only fits two, and a third collapsed into a "⋯" overflow
+    /// button. There, "Search in channel" moves into the ⋮ menu so only back + ⋮ remain.
+    private var barItemsInSideColumn: Bool?
+
+    private func configureChannelBarItems() {
+        guard rootId == nil else { return }
+        let insets = view.window?.safeAreaInsets ?? .zero
+        let sideColumn = max(insets.left, insets.right) >= 70
+        guard sideColumn != barItemsInSideColumn else { return }
+        barItemsInSideColumn = sideColumn
+        let more = UIBarButtonItem(image: CompassIcon.image("dots-vertical", size: 24), primaryAction: UIAction { [weak self] _ in
+            guard let self, let channel = session.channel(channelId) else { return }
+            var options = ChannelActions.options(for: channel, from: self)
+            if sideColumn {
+                options.insert(.init(icon: "magnify", title: "Search in channel") { [weak self] in self?.searchInChannel() }, at: 0)
+            }
+            presentOptions(options, title: session.title(for: channel))
+        })
+        more.accessibilityLabel = "Channel actions"
+        var items = [more]
+        if !sideColumn {
+            let search = UIBarButtonItem(image: CompassIcon.image("magnify", size: 24), primaryAction: UIAction { [weak self] _ in
+                self?.searchInChannel()
+            })
+            search.accessibilityLabel = "Search in channel"
+            items.append(search)
+        }
+        navigationItem.rightBarButtonItems = items
+        (navigationController as? ThemedNavigationController)?.flatten(self)
+    }
+
+    private func searchInChannel() {
+        guard let channel = session.channel(channelId) else { return }
+        let term = channel.type == .direct ? "from:\(session.teammateId(of: channel).flatMap { self.session.user($0)?.username } ?? "") "
+            : "in:\(channel.name) "
+        Router.shared.search(term)
     }
 
     private func refreshHeader() {
@@ -290,7 +328,16 @@ final class ConversationViewController: UIViewController {
             headerSubtitle.set(subtitle, Typography.style(.body, 75), color: theme.sidebarHeaderTextColor.opacity(0.72), alignment: .center)
         }
         navigationItem.titleView?.accessibilityLabel = [name, subtitle].compactMap { $0 }.joined(separator: ", ")
-        navigationItem.titleView?.sizeToFit()
+        updateTitleWidthLimit()
+    }
+
+    /// The title is centred, so it gets the bar's width minus room for the widest side's buttons
+    /// on both sides (back on the left; search + ⋮, or Follow, on the right).
+    private func updateTitleWidthLimit() {
+        guard let bar = navigationController?.navigationBar, bar.bounds.width > 0 else { return }
+        let sideReserve: CGFloat = 124
+        let limit = max(80, bar.bounds.width - bar.safeAreaInsets.left - bar.safeAreaInsets.right - 2 * sideReserve)
+        if titleWidthLimit?.constant != limit { titleWidthLimit?.constant = limit }
     }
 
     @objc private func headerTapped() {
@@ -503,6 +550,8 @@ final class ConversationViewController: UIViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        updateTitleWidthLimit()
+        configureChannelBarItems()
         // Folded to the outer screen with a thread pane open: turn the pane into a pushed screen.
         if let pane = threadPane, visibleWidth < Self.paneThreshold, let thread = pane.viewControllers.first {
             closeThreadPane()
@@ -511,7 +560,7 @@ final class ConversationViewController: UIViewController {
             navigationController?.pushViewController(thread, animated: false)
         }
         // Fold/unfold or rotation: re-lay out every row for the new width (off the main thread).
-        if collectionView.bounds.width > 0, collectionView.bounds.width != layoutWidth, !order.isEmpty {
+        if collectionView.bounds.width > 0, collectionView.bounds.width != layoutWidth || needsRebuild, !order.isEmpty {
             rebuild(animated: false)
         }
     }
@@ -733,7 +782,11 @@ final class ConversationViewController: UIViewController {
     /// Computes missing (or width-stale) layouts in the background, then applies one snapshot.
     fileprivate func rebuild(animated: Bool) {
         let width = collectionView.bounds.width
-        guard width > 0 else { return }
+        // Off screen (e.g. messages loaded before the view is in the window), the width is just the
+        // default screen width; laying out at it made long messages run off screen on one line until
+        // the next pass. Wait until we're on screen at the real width.
+        guard width > 0, view.window != nil else { needsRebuild = true; return }
+        needsRebuild = false
         rebuildGeneration += 1
         let generation = rebuildGeneration
         let widthChanged = width != layoutWidth
@@ -821,6 +874,8 @@ final class ConversationViewController: UIViewController {
             let built = inputs.map { PostLayoutBuilder.layout($0, width: width, style: style) }
             await MainActor.run { [weak self] in
                 guard let self, generation == self.rebuildGeneration else { return }
+                // The width changed while laying out: never show rows laid out for the old width.
+                guard width == self.collectionView.bounds.width else { self.rebuild(animated: false); return }
                 for layout in built { self.layouts[layout.id] = layout }
                 self.layoutWidth = width
                 self.apply(items, changed: Set(built.map(\.id)), animated: animated, widthChanged: widthChanged)
