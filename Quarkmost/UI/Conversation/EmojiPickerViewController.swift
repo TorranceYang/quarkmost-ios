@@ -6,6 +6,14 @@ import UIKit
 final class EmojiPickerViewController: UIViewController, UICollectionViewDelegate {
     var onPick: ((String) -> Void)?
 
+    init() {
+        super.init(nibName: nil, bundle: nil)
+        BottomSheet.install(on: self, detents: [.medium, .large])
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
     private struct Section: Hashable {
         let id: String       // "recent", "custom", a category key, or "search"
         let title: String
@@ -24,11 +32,6 @@ final class EmojiPickerViewController: UIViewController, UICollectionViewDelegat
     private var selectedSection = 0
     private var jumping = false
 
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
-        installTapOutsideToDismiss()
-    }
-
     override func viewDidLoad() {
         super.viewDidLoad()
         let theme = Theme.current
@@ -40,8 +43,7 @@ final class EmojiPickerViewController: UIViewController, UICollectionViewDelegat
                               for: .editingDidEndOnExit)
         searchField.addAction(UIAction { [weak self] _ in
             // Searching wants room for results above the keyboard: grow the sheet, like Messenger.
-            guard let sheet = self?.sheetPresentationController else { return }
-            sheet.animateChanges { sheet.selectedDetentIdentifier = .large }
+            self?.bottomSheet?.move(to: .large)
         }, for: .editingDidBegin)
         searchField.translatesAutoresizingMaskIntoConstraints = false
 
@@ -106,11 +108,7 @@ final class EmojiPickerViewController: UIViewController, UICollectionViewDelegat
             cv.dequeueConfiguredReusableSupplementary(using: header, for: ip)
         }
 
-        if let sheet = sheetPresentationController {
-            sheet.detents = [.medium(), .large()]
-            sheet.prefersGrabberVisible = true
-            sheet.preferredCornerRadius = 16
-        }
+        bottomSheet?.scrollView = collectionView
         showBrowse()
         NotificationCenter.default.addObserver(forName: CustomEmojiStore.didLoad, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
@@ -317,16 +315,4 @@ final class EmojiHeader: UICollectionReusableView {
 
 extension EmojiPickerViewController {
     /// Tapping the dimmed area above the sheet closes it, like the official bottom sheet.
-    func installTapOutsideToDismiss() {
-        guard let container = presentationController?.containerView,
-              !(container.gestureRecognizers ?? []).contains(where: { $0.name == "tapOutside" }) else { return }
-        let tap = UITapGestureRecognizer(target: self, action: #selector(tapOutside(_:)))
-        tap.name = "tapOutside"
-        tap.cancelsTouchesInView = false
-        container.addGestureRecognizer(tap)
-    }
-
-    @objc private func tapOutside(_ g: UITapGestureRecognizer) {
-        if !view.frame.contains(g.location(in: g.view)) { dismiss(animated: true) }
-    }
 }

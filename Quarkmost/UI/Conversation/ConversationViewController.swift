@@ -1162,7 +1162,7 @@ final class ReactionsViewController: UIViewController, UITableViewDataSource, UI
     init(post: Post, initialEmoji: String?) {
         self.post = post
         super.init(nibName: nil, bundle: nil)
-        modalPresentationStyle = .pageSheet
+        BottomSheet.install(on: self, detents: [.medium, .large])
         for r in (post.metadata?.reactions ?? []).sorted(by: { ($0.createAt ?? 0) < ($1.createAt ?? 0) }) {
             if byEmoji[r.emojiName] == nil { order.append(r.emojiName) }
             byEmoji[r.emojiName, default: []].append(r)
@@ -1179,11 +1179,7 @@ final class ReactionsViewController: UIViewController, UITableViewDataSource, UI
         super.viewDidLoad()
         let theme = Theme.current
         view.backgroundColor = theme.centerChannelBg
-        if let sheet = sheetPresentationController {
-            sheet.detents = [.medium(), .large()]
-            sheet.prefersGrabberVisible = true
-            sheet.preferredCornerRadius = 12
-        }
+        bottomSheet?.scrollView = table
         bar.showsHorizontalScrollIndicator = false
         barStack.axis = .horizontal
         barStack.spacing = 12

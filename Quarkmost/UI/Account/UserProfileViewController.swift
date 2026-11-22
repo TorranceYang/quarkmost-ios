@@ -10,7 +10,7 @@ final class UserProfileViewController: StackScreenViewController {
         self.userId = userId
         self.channelId = channelId
         super.init(nibName: nil, bundle: nil)
-        modalPresentationStyle = .pageSheet
+        BottomSheet.install(on: self, detents: [.medium, .large])
     }
 
     @available(*, unavailable)
@@ -18,11 +18,6 @@ final class UserProfileViewController: StackScreenViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        if let sheet = sheetPresentationController {
-            sheet.detents = [.medium(), .large()]
-            sheet.prefersGrabberVisible = true
-            sheet.preferredCornerRadius = 12
-        }
         build()
         Task {
             let session = AppSession.shared

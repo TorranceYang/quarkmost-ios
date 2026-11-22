@@ -23,16 +23,11 @@ final class PostOptionsViewController: UIViewController {
         self.showsReactionBar = showsReactionBar
         self.sheetTitle = title
         super.init(nibName: nil, bundle: nil)
-        modalPresentationStyle = .pageSheet
+        BottomSheet.install(on: self, detents: [.fitting { [weak self] in self?.fittingHeight() ?? 300 }])
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
-
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
-        installTapOutsideToDismiss()
-    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -43,7 +38,7 @@ final class PostOptionsViewController: UIViewController {
         stack.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(stack)
         NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 24),
+            stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 8),
             stack.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 20),
             stack.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -20),
         ])
@@ -59,16 +54,11 @@ final class PostOptionsViewController: UIViewController {
         }
         for option in options { stack.addArrangedSubview(makeRow(option, theme)) }
 
-        if let sheet = sheetPresentationController {
-            sheet.prefersGrabberVisible = true
-            sheet.preferredCornerRadius = 12
-            sheet.detents = [.custom { [weak self] _ in self?.fittingHeight() }]
-        }
     }
 
     private func fittingHeight() -> CGFloat {
         view.layoutIfNeeded()
-        return stack.systemLayoutSizeFitting(UIView.layoutFittingCompressedSize).height + 24 + 8
+        return stack.systemLayoutSizeFitting(UIView.layoutFittingCompressedSize).height + 8 + 8
     }
 
     private func makeReactionBar(_ theme: Theme) -> UIView {
@@ -155,18 +145,6 @@ final class OptionRow: UIControl {
 
 extension PostOptionsViewController {
     /// Tapping the dimmed area above the sheet closes it, like the official bottom sheet.
-    func installTapOutsideToDismiss() {
-        guard let container = presentationController?.containerView,
-              !(container.gestureRecognizers ?? []).contains(where: { $0.name == "tapOutside" }) else { return }
-        let tap = UITapGestureRecognizer(target: self, action: #selector(tapOutside(_:)))
-        tap.name = "tapOutside"
-        tap.cancelsTouchesInView = false
-        container.addGestureRecognizer(tap)
-    }
-
-    @objc private func tapOutside(_ g: UITapGestureRecognizer) {
-        if !view.frame.contains(g.location(in: g.view)) { dismiss(animated: true) }
-    }
 }
 
 extension UIImage {
