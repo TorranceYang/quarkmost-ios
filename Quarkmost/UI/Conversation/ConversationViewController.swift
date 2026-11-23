@@ -269,7 +269,9 @@ final class ConversationViewController: UIViewController, HidesNavigationBar {
     /// call, music), whose size apps can't read. Our own button pinned there got covered by it.
     /// Not for the thread pane, whose Back closes the pane and stays in its pill.
     var showsSystemBack: Bool {
-        let window = navigationController?.view.window ?? view.window
+        // The root's window: asked before a push, this screen isn't in a window yet, which hid the
+        // bar for the push and then popped Back in afterwards.
+        let window = Router.shared.root?.view.window ?? view.window
         return onClose == nil && showsBack && (window?.safeAreaInsets.right ?? 0) >= 70
     }
 
