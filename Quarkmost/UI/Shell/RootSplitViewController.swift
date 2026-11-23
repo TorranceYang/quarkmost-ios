@@ -63,7 +63,7 @@ final class RootSplitViewController: UISplitViewController, UISplitViewControlle
         channelNav.applyThemedBar()
         detailNav.applyThemedBar()
         channelNav.view.backgroundColor = theme.sidebarBg
-        detailNav.view.backgroundColor = theme.sidebarBg
+        detailNav.view.backgroundColor = theme.centerChannelBg   // conversations use the chat colour up to the top edge
         (detailNav.viewControllers.first as? EmptyDetailViewController)?.applyTheme()
         if homeTabs.isViewLoaded { homeTabs.applyTheme() }
         setNeedsStatusBarAppearanceUpdate()
@@ -160,7 +160,7 @@ final class RootSplitViewController: UISplitViewController, UISplitViewControlle
 }
 
 /// Shown in the right pane on the inner screen before any channel is chosen.
-final class EmptyDetailViewController: UIViewController {
+final class EmptyDetailViewController: UIViewController, HidesNavigationBar {
     override func viewDidLoad() {
         super.viewDidLoad()
         applyTheme()
@@ -178,15 +178,6 @@ final class EmptyDetailViewController: UIViewController {
         contentUnavailableConfiguration = config
     }
 
-    override func viewWillAppear(_ animated: Bool) {
-        super.viewWillAppear(animated)
-        navigationController?.setNavigationBarHidden(true, animated: false)
-    }
-
-    override func viewWillDisappear(_ animated: Bool) {
-        super.viewWillDisappear(animated)
-        navigationController?.setNavigationBarHidden(false, animated: false)
-    }
 }
 
 /// Banner that drops from the top for a new DM or mention in another channel; tap opens it,

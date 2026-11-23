@@ -4,7 +4,7 @@ import UIKit
 /// 52pt tall on the center background, a 48×4 indicator in the button color above the active tab,
 /// inactive icons at 48%. It lives inside the left navigation stack, so it disappears when a channel
 /// is pushed on a phone and stays under the sidebar on the Duo's inner screen.
-final class HomeTabsViewController: UIViewController {
+final class HomeTabsViewController: UIViewController, HidesNavigationBar {
     enum Tab: Int, CaseIterable { case home, search, mentions, saved, account }
 
     let channelList = ChannelListViewController()
@@ -86,19 +86,6 @@ final class HomeTabsViewController: UIViewController {
         applyTheme()
         NotificationCenter.default.addObserver(forName: .sessionSidebarChanged, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.refreshBadge() }
-        }
-    }
-
-    override func viewWillAppear(_ animated: Bool) {
-        super.viewWillAppear(animated)
-        navigationController?.setNavigationBarHidden(true, animated: animated)
-    }
-
-    override func viewWillDisappear(_ animated: Bool) {
-        super.viewWillDisappear(animated)
-        // Show the bar again only when something is being pushed on top of the tabs (phone layout).
-        if navigationController?.topViewController !== self {
-            navigationController?.setNavigationBarHidden(false, animated: animated)
         }
     }
 

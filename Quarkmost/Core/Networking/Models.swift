@@ -166,7 +166,7 @@ public struct Post: Codable, Hashable, Sendable, Identifiable {
     public var overrideUsername: String? { props?["override_username"]?.stringValue.flatMap { $0.isEmpty ? nil : $0 } }
     public var overrideIconURL: String? { props?["override_icon_url"]?.stringValue.flatMap { $0.isEmpty ? nil : $0 } }
 
-    /// Slack-style attachments that bots and webhooks send in `props.attachments`.
+    /// Rich message attachments that bots and webhooks send in `props.attachments`.
     public var attachments: [MessageAttachment] {
         guard case .array(let items)? = props?["attachments"] else { return [] }
         return items.compactMap(MessageAttachment.init(json:))

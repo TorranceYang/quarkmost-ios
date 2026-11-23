@@ -203,6 +203,7 @@ final class PostCell: UICollectionViewCell {
             return
         }
         if layout.failed { onTapFailed?(layout.post); return }
+        if let window { BottomSheet.anchor(at: g.location(in: window)) }
         onLongPress?(layout.post)
     }
 

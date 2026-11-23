@@ -472,3 +472,15 @@ final class FlatTabs: UIView {
         }
     }
 }
+
+extension UIColor {
+    /// This colour with `amount` (0…1) of `other` blended in, as an opaque colour.
+    func mixed(with other: UIColor, amount: CGFloat) -> UIColor {
+        var (r1, g1, b1, a1): (CGFloat, CGFloat, CGFloat, CGFloat) = (0, 0, 0, 0)
+        var (r2, g2, b2, a2): (CGFloat, CGFloat, CGFloat, CGFloat) = (0, 0, 0, 0)
+        getRed(&r1, green: &g1, blue: &b1, alpha: &a1)
+        other.getRed(&r2, green: &g2, blue: &b2, alpha: &a2)
+        let t = max(0, min(1, amount))
+        return UIColor(red: r1 + (r2 - r1) * t, green: g1 + (g2 - g1) * t, blue: b1 + (b2 - b1) * t, alpha: 1)
+    }
+}

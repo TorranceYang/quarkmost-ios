@@ -433,7 +433,8 @@ enum ChannelActions {
         let session = AppSession.shared
         let favorite = session.isFavorite(channel.id), muted = session.isMuted(channel.id)
         var options: [PostOptionsViewController.Option] = [
-            .init(icon: favorite ? "star" : "star-outline", title: favorite ? "Unfavorite" : "Favorite") {
+            .init(icon: favorite ? "star" : "star-outline", title: favorite ? "Unfavorite" : "Favorite",
+                  shortTitle: favorite ? "Unstar" : "Star") {
                 session.setFavorite(!favorite, channelId: channel.id)
             },
             .init(icon: muted ? "bell-outline" : "bell-off-outline", title: muted ? "Unmute" : "Mute") {
@@ -441,7 +442,7 @@ enum ChannelActions {
             },
         ]
         if channel.type == .open || channel.type == .privateChannel {
-            options.append(.init(icon: "account-plus-outline", title: "Add members") {
+            options.append(.init(icon: "account-plus-outline", title: "Add members", shortTitle: "Add") {
                 Router.shared.top?.present(AddMembersViewController(channel: channel).wrappedForModal(), animated: true)
             })
             options.append(.init(icon: "link-variant", title: "Copy Link") { [weak presenter] in

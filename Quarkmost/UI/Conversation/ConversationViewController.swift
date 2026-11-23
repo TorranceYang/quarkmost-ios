@@ -10,7 +10,7 @@ import UniformTypeIdentifiers
 /// - Keyboard: the composer is pinned to `view.keyboardLayoutGuide`, so iOS moves the layout in the
 ///   same animation as the keyboard. The composer only takes focus in `viewDidAppear`, and only when
 ///   explicitly asked (the notification-keyboard bug).
-final class ConversationViewController: UIViewController {
+final class ConversationViewController: UIViewController, HidesNavigationBar {
     let channelId: String
     /// Set when this screen is a thread: shows the root and its replies, and replies go to the thread.
     let rootId: String?
@@ -30,9 +30,9 @@ final class ConversationViewController: UIViewController {
     private let composer = ComposerView()
     private let autocomplete = AutocompleteView()
     private let jumpButton = UIButton(type: .custom)
-    private let headerTitle = UILabel(), headerSubtitle = UILabel()
-    private var titleWidthLimit: NSLayoutConstraint?
-    private let headerAvatar = AvatarView(size: 28)
+    private let header = GlassHeaderView()
+    private let backButton = GlassCircleButton(icon: "arrow-back-ios")
+    private let scrim = TopScrim()
 
     private var posts: [String: Post] = [:]
     private var order: [String] = []            // newest first
@@ -86,7 +86,10 @@ final class ConversationViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         navigationItem.largeTitleDisplayMode = .never
-        edgesForExtendedLayout = []   // the area above the header belongs to the header color, not the list
+        // Run under the (hidden) navigation bar from the first layout. Laid out below the opaque
+        // bar instead, the screen slid up when the bar hid, and the glass header jumped with it.
+        edgesForExtendedLayout = .all
+        extendedLayoutIncludesOpaqueBars = true
         let theme = Theme.current
         view.backgroundColor = theme.centerChannelBg
 
@@ -124,7 +127,7 @@ final class ConversationViewController: UIViewController {
         let collectionTrailing = collectionView.trailingAnchor.constraint(equalTo: contentGuide.trailingAnchor)
         collectionTrailing.priority = .defaultHigh
         NSLayoutConstraint.activate([
-            collectionView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            collectionView.topAnchor.constraint(equalTo: view.topAnchor),   // scrolls under the floating header
             // Safe area matters on the Duo's outer screen, where the status bar runs down the right edge.
             collectionView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
             collectionView.trailingAnchor.constraint(lessThanOrEqualTo: view.safeAreaLayoutGuide.trailingAnchor),
@@ -220,33 +223,23 @@ final class ConversationViewController: UIViewController {
         loadNewest()
     }
 
-    // MARK: Header (`screens/channel/header`)
+    // MARK: Header
+    //
+    // A floating glass pill with the channel's name (tap for the channel menu) and a round glass
+    // Back button, with messages scrolling underneath. The system navigation bar is hidden here.
+    // On the iPhone Duo, Back sits in the side column under the status icons, as our own view, so
+    // it can't overflow into a "⋯" menu.
 
     private func setUpHeader() {
         let theme = Theme.current
-        let text = UIStackView(arrangedSubviews: [headerTitle, headerSubtitle])
-        text.axis = .vertical
-        text.alignment = .center
-        let row = UIStackView(arrangedSubviews: [headerAvatar, text])
-        row.spacing = 8
-        row.alignment = .center
-        row.isUserInteractionEnabled = true
-        row.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(headerTapped)))
-        row.accessibilityTraits = .button
-        // Cap the title's width so a long name/subtitle truncates instead of crowding the bar buttons
-        // (iOS 26 moves buttons that don't fit into a "⋯" overflow menu).
-        row.translatesAutoresizingMaskIntoConstraints = false
-        titleWidthLimit = row.widthAnchor.constraint(lessThanOrEqualToConstant: 200)
-        titleWidthLimit?.isActive = true
-        for label in [headerTitle, headerSubtitle] {
-            label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-            label.lineBreakMode = .byTruncatingTail
-        }
-        navigationItem.titleView = row
-        navigationItem.backButtonDisplayMode = .minimal
-
+        scrim.setColor(theme.centerChannelBg)
+        scrim.isUserInteractionEnabled = false
+        header.onTap = { [weak self] in self?.headerTapped() }
+        backButton.setTint(theme.centerChannelColor)
+        backButton.accessibilityLabel = "Back"
+        backButton.addAction(UIAction { [weak self] _ in self?.goBack() }, for: .touchUpInside)
+        [scrim, header, backButton].forEach(view.addSubview)
         if rootId == nil {
-            configureChannelBarItems()
             Task {
                 memberCount = (try? await session.client.channelStats(id: channelId))?.memberCount
                 refreshHeader()
@@ -254,40 +247,109 @@ final class ConversationViewController: UIViewController {
         } else {
             refreshFollowButton()
         }
-        headerSubtitle.textColor = theme.sidebarHeaderTextColor.opacity(0.72)
         refreshHeader()
     }
 
-    /// On the iPhone Duo, iOS stacks the header buttons in the side column beside the status bar.
-    /// With the keyboard up that column only fits two, and a third collapsed into a "⋯" overflow
-    /// button. There, "Search in channel" moves into the ⋮ menu so only back + ⋮ remain.
-    private var barItemsInSideColumn: Bool?
+    /// Set when shown as the thread pane beside a channel: Back closes the pane.
+    var onClose: (() -> Void)?
 
-    private func configureChannelBarItems() {
-        guard rootId == nil else { return }
-        let insets = view.window?.safeAreaInsets ?? .zero
-        let sideColumn = max(insets.left, insets.right) >= 70
-        guard sideColumn != barItemsInSideColumn else { return }
-        barItemsInSideColumn = sideColumn
-        let more = UIBarButtonItem(image: CompassIcon.image("dots-vertical", size: 24), primaryAction: UIAction { [weak self] _ in
-            guard let self, let channel = session.channel(channelId) else { return }
-            var options = ChannelActions.options(for: channel, from: self)
-            if sideColumn {
-                options.insert(.init(icon: "magnify", title: "Search in channel") { [weak self] in self?.searchInChannel() }, at: 0)
+    private func goBack() {
+        if let onClose { onClose(); return }
+        guard let nav = navigationController else { return }
+        if nav.viewControllers.count > 1 { nav.popViewController(animated: true) }
+        else { splitViewController?.show(.primary) }
+    }
+
+    private var showsBack: Bool {
+        if onClose != nil { return true }
+        guard let nav = navigationController else { return false }
+        return nav.viewControllers.first !== self || splitViewController?.isCollapsed == true
+    }
+
+    /// Lays out the pill, Back and the scrim, and keeps the newest messages clear of them.
+    private func layoutHeader() {
+        guard view.window != nil else { return }
+        let window = view.window?.safeAreaInsets ?? .zero
+        // The navigation container's top inset, not ours: ours still counts the navigation bar on
+        // the first layout pass, before it hides, which made the pill start low and then jump up.
+        let safeTop = navigationController?.view.safeAreaInsets.top ?? view.safeAreaInsets.top
+        let area = collectionView.frame          // the chat column (excludes a thread pane)
+        let top = max(safeTop, 8) + (safeTop > 0 ? 2 : 0)
+        backButton.isHidden = !showsBack
+        let size = GlassCircleButton.size
+        var leading = area.minX + 12
+        if !backButton.isHidden {
+            if window.right >= 70 {
+                // In the Duo's status-bar column, under the clock and Wi-Fi. The status icons are centred 48pt in from the edge on both Duo screens (not in the
+                // middle of the safe-area column). On the outer screen they sit lower, under the camera.
+                let centerX = view.bounds.width - 48
+                let y: CGFloat = view.bounds.width < 600 ? 170 : 116
+                backButton.frame = CGRect(x: (centerX - size / 2).rounded(), y: y, width: size, height: size)
+            } else {
+                backButton.frame = CGRect(x: leading, y: top + (GlassHeaderView.height - size) / 2, width: size, height: size)
+                leading = backButton.frame.maxX + 8
             }
-            presentOptions(options, title: session.title(for: channel))
-        })
-        more.accessibilityLabel = "Channel actions"
-        var items = [more]
-        if !sideColumn {
-            let search = UIBarButtonItem(image: CompassIcon.image("magnify", size: 24), primaryAction: UIAction { [weak self] _ in
-                self?.searchInChannel()
-            })
-            search.accessibilityLabel = "Search in channel"
-            items.append(search)
         }
-        navigationItem.rightBarButtonItems = items
-        (navigationController as? ThemedNavigationController)?.flatten(self)
+        header.frame = CGRect(x: leading, y: top, width: max(120, area.maxX - 12 - leading), height: GlassHeaderView.height)
+        scrim.frame = CGRect(x: 0, y: 0, width: view.bounds.width, height: header.frame.maxY + 12)
+        scrim.setSolidHeight(max(safeTop, header.frame.midY))   // no text fighting the title
+        // The list is flipped, so its visual top is the bottom inset.
+        let clearance = header.frame.maxY + 6 - area.minY
+        if collectionView.contentInset.bottom != clearance {
+            collectionView.contentInset.bottom = clearance
+            collectionView.verticalScrollIndicatorInsets.bottom = clearance
+        }
+    }
+
+    private func refreshHeader() {
+        let theme = Theme.current
+        let channel = session.channel(channelId)
+        let name = channel.map(session.title(for:)) ?? title ?? ""
+        header.accessibilityHint = rootId == nil ? "Opens channel options" : "Opens the channel"
+        if rootId != nil {
+            header.configure(iconName: "message-text-outline", title: "Thread", subtitle: "in \(name)", theme: theme)
+            return
+        }
+        var subtitle: String?
+        var iconName: String? = "globe"
+        if let channel, channel.type == .direct, let other = session.teammateId(of: channel) {
+            let user = session.user(other)
+            iconName = nil
+            header.avatar.setUser(other, pictureUpdate: user?.lastPictureUpdate)
+            if !(user?.isBot ?? false) { header.avatar.setStatus(session.status(other), background: theme.centerChannelBg) }
+            if let custom = user?.customStatus {
+                subtitle = "\(EmojiStore.shared.unicode(for: custom.emoji) ?? "") \(custom.text)".trimmingCharacters(in: .whitespaces)
+            } else if user?.isBot ?? false {
+                subtitle = "Bot"
+            }
+        } else {
+            switch channel?.type {
+            case .privateChannel: iconName = "lock-outline"
+            case .group: iconName = "account-multiple-outline"
+            default: iconName = "globe"
+            }
+            subtitle = memberCountText
+        }
+        if session.isMuted(channelId) { subtitle = (subtitle.map { $0 + " · " } ?? "") + "Muted" }
+        header.configure(iconName: iconName, title: name, subtitle: subtitle, theme: theme)
+    }
+
+    private var memberCountText: String? {
+        memberCount.map { "\($0) \($0 == 1 ? "member" : "members")" }
+    }
+
+    /// Actions with a short title become the quick buttons along the top; the rest are rows.
+    private func showChannelMenu() {
+        guard let channel = session.channel(channelId) else { return }
+        let all = ChannelActions.options(for: channel, from: self)
+        var buttons = all.compactMap { option in
+            option.shortTitle.map { PostOptionsViewController.Option(icon: option.icon, title: $0, action: option.action) }
+        }
+        buttons.append(.init(icon: "magnify", title: "Search") { [weak self] in self?.searchInChannel() })
+        let menu = ChannelMenuViewController(title: session.title(for: channel), subtitle: memberCountText,
+                                             buttons: buttons, rows: all.filter { $0.shortTitle == nil },
+                                             anchor: header.convert(header.bounds, to: nil))
+        present(menu, animated: true)
     }
 
     private func searchInChannel() {
@@ -297,52 +359,9 @@ final class ConversationViewController: UIViewController {
         Router.shared.search(term)
     }
 
-    private func refreshHeader() {
-        let theme = Theme.current
-        let channel = session.channel(channelId)
-        let name = channel.map(session.title(for:)) ?? title ?? ""
-        var subtitle: String?
-        headerAvatar.isHidden = true
-        if rootId != nil {
-            headerTitle.set("Thread", Typography.style(.heading, 300), color: theme.sidebarHeaderTextColor, alignment: .center)
-            subtitle = "in \(name)"
-        } else {
-            headerTitle.set(name, Typography.style(.heading, 300), color: theme.sidebarHeaderTextColor, alignment: .center)
-            if let channel, channel.type == .direct, let other = session.teammateId(of: channel) {
-                let user = session.user(other)
-                headerAvatar.isHidden = false
-                headerAvatar.setUser(other, pictureUpdate: user?.lastPictureUpdate)
-                if !(user?.isBot ?? false) { headerAvatar.setStatus(session.status(other), background: theme.sidebarBg) }
-                if let custom = user?.customStatus {
-                    subtitle = "\(EmojiStore.shared.unicode(for: custom.emoji) ?? "") \(custom.text)".trimmingCharacters(in: .whitespaces)
-                } else if user?.isBot ?? false {
-                    subtitle = "Bot"
-                }
-            } else if let memberCount {
-                subtitle = "\(memberCount) \(memberCount == 1 ? "member" : "members")"
-            }
-            if session.isMuted(channelId) { subtitle = (subtitle.map { $0 + " · " } ?? "") + "Muted" }
-        }
-        headerSubtitle.isHidden = subtitle == nil
-        if let subtitle {
-            headerSubtitle.set(subtitle, Typography.style(.body, 75), color: theme.sidebarHeaderTextColor.opacity(0.72), alignment: .center)
-        }
-        navigationItem.titleView?.accessibilityLabel = [name, subtitle].compactMap { $0 }.joined(separator: ", ")
-        updateTitleWidthLimit()
-    }
-
-    /// The title is centred, so it gets the bar's width minus room for the widest side's buttons
-    /// on both sides (back on the left; search + ⋮, or Follow, on the right).
-    private func updateTitleWidthLimit() {
-        guard let bar = navigationController?.navigationBar, bar.bounds.width > 0 else { return }
-        let sideReserve: CGFloat = 124
-        let limit = max(80, bar.bounds.width - bar.safeAreaInsets.left - bar.safeAreaInsets.right - 2 * sideReserve)
-        if titleWidthLimit?.constant != limit { titleWidthLimit?.constant = limit }
-    }
-
-    @objc private func headerTapped() {
+    private func headerTapped() {
         if rootId != nil { Router.shared.openChannel(channelId); return }
-        present(ChannelInfoViewController(channelId: channelId).wrappedForModal(), animated: true)
+        showChannelMenu()
     }
 
     private func refreshFollowButton() {
@@ -353,16 +372,15 @@ final class ConversationViewController: UIViewController {
         var title = AttributedString(following ? "Following" : "Follow")
         title.font = Typography.style(.heading, 75).font
         config.attributedTitle = title
-        config.baseBackgroundColor = Theme.current.sidebarHeaderTextColor.opacity(following ? 0.24 : 0.08)
-        config.baseForegroundColor = Theme.current.sidebarHeaderTextColor
+        config.baseBackgroundColor = Theme.current.centerChannelColor.opacity(following ? 0.16 : 0.08)
+        config.baseForegroundColor = Theme.current.centerChannelColor
         config.contentInsets = .init(top: 6, leading: 12, bottom: 6, trailing: 12)
         config.background.cornerRadius = 4
         let button = UIButton(configuration: config, primaryAction: UIAction { [weak self] _ in
             guard let self, let root = posts[rootId] else { return }
             setFollowing(!(root.isFollowing ?? false), root)
         })
-        navigationItem.rightBarButtonItem = UIBarButtonItem(customView: button)
-        refreshBarButtons()
+        header.setAccessory(button)
     }
 
     // MARK: Composer
@@ -519,17 +537,28 @@ final class ConversationViewController: UIViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        navigationController?.setNavigationBarHidden(false, animated: animated)
         if rootId == nil {
             session.viewingChannelId = channelId
             session.markRead(channelId: channelId)
         }
         if hidSidebarForThread, let split = splitViewController {
-            hidSidebarForThread = false
-            if animated, !split.isCollapsed, let coordinator = transitionCoordinator {
-                coordinator.animate(alongsideTransition: { _ in split.preferredDisplayMode = .oneBesideSecondary })
+            let coordinator = animated && !split.isCollapsed ? transitionCoordinator : nil
+            if let coordinator, coordinator.isInteractive {
+                // Swiping back from the thread: bring the channel list back only once the swipe
+                // completes. Restoring it mid-swipe left a half-open mix (and a thread with the
+                // list beside it) when the swipe was let go early.
+                coordinator.notifyWhenInteractionChanges { [weak self] context in
+                    guard !context.isCancelled else { return }
+                    self?.hidSidebarForThread = false
+                    UIView.animate(withDuration: 0.25) { split.preferredDisplayMode = .oneBesideSecondary }
+                }
             } else {
-                split.preferredDisplayMode = .oneBesideSecondary
+                hidSidebarForThread = false
+                if let coordinator {
+                    coordinator.animate(alongsideTransition: { _ in split.preferredDisplayMode = .oneBesideSecondary })
+                } else {
+                    split.preferredDisplayMode = .oneBesideSecondary
+                }
             }
         }
         refreshHeader()
@@ -550,13 +579,12 @@ final class ConversationViewController: UIViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        updateTitleWidthLimit()
-        configureChannelBarItems()
+        layoutHeader()
         // Folded to the outer screen with a thread pane open: turn the pane into a pushed screen.
         if let pane = threadPane, visibleWidth < Self.paneThreshold, let thread = pane.viewControllers.first {
             closeThreadPane()
             pane.setViewControllers([], animated: false)
-            thread.navigationItem.leftBarButtonItem = nil
+            (thread as? ConversationViewController)?.onClose = nil
             navigationController?.pushViewController(thread, animated: false)
         }
         // Fold/unfold or rotation: re-lay out every row for the new width (off the main thread).
@@ -597,9 +625,7 @@ final class ConversationViewController: UIViewController {
     private func showThreadPane(_ thread: ConversationViewController) {
         closeThreadPane()
         let theme = Theme.current
-        thread.navigationItem.leftBarButtonItem = UIBarButtonItem(
-            image: CompassIcon.image("close", size: 24), primaryAction: UIAction { [weak self] _ in self?.closeThreadPane(animated: true) })
-        thread.navigationItem.leftBarButtonItem?.accessibilityLabel = "Close thread"
+        thread.onClose = { [weak self] in self?.closeThreadPane(animated: true) }
         let nav = ThemedNavigationController(rootViewController: thread)
         addChild(nav)
         nav.view.translatesAutoresizingMaskIntoConstraints = false
@@ -1399,7 +1425,7 @@ extension ConversationViewController {
         var options: [PostOptionsViewController.Option] = []
 
         if rootId == nil, !post.isSystemMessage {
-            options.append(.init(icon: "reply-outline", title: "Reply") { [weak self] in self?.openThreadScreen(post) })
+            options.append(.init(icon: "reply-outline", title: "Reply", quick: true) { [weak self] in self?.openThreadScreen(post) })
         }
         if crt, !post.isSystemMessage {
             let following = post.isFollowing ?? false
@@ -1415,12 +1441,12 @@ extension ConversationViewController {
             self?.showToast("Link copied")
         })
         if !post.message.isEmpty {
-            options.append(.init(icon: "content-copy", title: "Copy Text") { [weak self] in
+            options.append(.init(icon: "content-copy", title: "Copy Text", quick: true) { [weak self] in
                 UIPasteboard.general.string = post.message
                 self?.showToast("Copied to clipboard")
             })
         }
-        options.append(.init(icon: saved ? "bookmark" : "bookmark-outline", title: saved ? "Unsave" : "Save") { [weak self] in
+        options.append(.init(icon: saved ? "bookmark" : "bookmark-outline", title: saved ? "Unsave" : "Save", quick: true) { [weak self] in
             self?.session.setSaved(!saved, postId: post.id)
             self?.layouts[post.id] = nil
             self?.rebuild(animated: false)

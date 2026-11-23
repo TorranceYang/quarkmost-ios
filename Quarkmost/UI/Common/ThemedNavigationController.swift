@@ -8,7 +8,8 @@ final class ThemedNavigationController: UINavigationController, UINavigationCont
     private static let backTag = 0xBAC
 
     /// On the iPhone Duo the status bar is a column at the side. The header stops where that column
-    /// begins: this covers the bar's background there with the chat color, under the bar's buttons.
+    /// begins: this covers the bar's background (and its hairline) there with the chat color, under
+    /// the bar's buttons.
     private let columnCover = UIView()
 
     override func viewDidLoad() {
@@ -21,14 +22,19 @@ final class ThemedNavigationController: UINavigationController, UINavigationCont
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        // Folding/unfolding moves screens between navigation stacks without willShow; re-check.
+        if transitionCoordinator == nil, let top = topViewController {
+            let hidden = Self.hidesBar(top)
+            if isNavigationBarHidden != hidden { setNavigationBarHidden(hidden, animated: false) }
+        }
         // The Duo reports its status column as a side safe-area inset (~84pt; a landscape notch is ≤62).
         let insets = view.safeAreaInsets
         let bar = navigationBar
         var cover = CGRect.zero
         if insets.right >= 70 {
-            cover = CGRect(x: bar.bounds.width - insets.right, y: -bar.frame.minY, width: insets.right, height: bar.frame.maxY)
+            cover = CGRect(x: bar.bounds.width - insets.right, y: -bar.frame.minY, width: insets.right, height: bar.frame.maxY + 1)
         } else if insets.left >= 70 {
-            cover = CGRect(x: 0, y: -bar.frame.minY, width: insets.left, height: bar.frame.maxY)
+            cover = CGRect(x: 0, y: -bar.frame.minY, width: insets.left, height: bar.frame.maxY + 1)
         }
         if cover.isEmpty || isNavigationBarHidden {
             columnCover.removeFromSuperview()
@@ -53,6 +59,21 @@ final class ThemedNavigationController: UINavigationController, UINavigationCont
 
     func navigationController(_ navigationController: UINavigationController, willShow viewController: UIViewController, animated: Bool) {
         flatten(viewController)
+        setNavigationBarHidden(Self.hidesBar(viewController), animated: animated)
+        // A swipe back that's let go: the screen we were on stays, so does its bar state.
+        if let coordinator = transitionCoordinator, coordinator.isInteractive {
+            coordinator.notifyWhenInteractionChanges { [weak self] context in
+                guard context.isCancelled, let self, let top = self.topViewController else { return }
+                self.setNavigationBarHidden(Self.hidesBar(top), animated: false)
+            }
+        }
+    }
+
+    /// Whether a screen draws its own header. The navigation controller is the only place the bar
+    /// is shown or hidden: screens toggling it themselves raced each other when folding moved them
+    /// between stacks, and left the system bar (and its Back button) over the glass header.
+    static func hidesBar(_ vc: UIViewController) -> Bool {
+        vc is HidesNavigationBar || vc is UINavigationController
     }
 
     /// Call again after a screen replaces its bar buttons.
@@ -89,10 +110,5 @@ final class ThemedNavigationController: UINavigationController, UINavigationCont
     }
 }
 
-extension UIViewController {
-    /// Re-applies the flat button style after changing `navigationItem` buttons on a visible screen.
-    func refreshBarButtons() {
-        (navigationController as? ThemedNavigationController)?.flatten(self)
-    }
-}
-
+/// Screens with their own header; their navigation controller hides the system bar.
+protocol HidesNavigationBar: UIViewController {}
