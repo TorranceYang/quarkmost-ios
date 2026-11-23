@@ -31,7 +31,6 @@ final class ConversationViewController: UIViewController, HidesNavigationBar {
     private let autocomplete = AutocompleteView()
     private let jumpButton = UIButton(type: .custom)
     private let header = GlassHeaderView()
-    private let backButton = GlassCircleButton(icon: "arrow-back-ios")
     private let scrim = TopScrim()
 
     private var posts: [String: Post] = [:]
@@ -225,10 +224,10 @@ final class ConversationViewController: UIViewController, HidesNavigationBar {
 
     // MARK: Header
     //
-    // A floating glass pill with the channel's name (tap for the channel menu) and a round glass
-    // Back button, with messages scrolling underneath. The system navigation bar is hidden here.
-    // On the iPhone Duo, Back sits in the side column under the status icons, as our own view, so
-    // it can't overflow into a "⋯" menu.
+    // A floating glass pill with Back and the channel's name (tap for the channel menu), with
+    // messages scrolling underneath. The system navigation bar is hidden here, so on the iPhone Duo
+    // nothing goes in the status-bar column: iOS overflowed bar buttons there into a "⋯" menu, and
+    // an expanded Dynamic Island (a call, music) grows down it.
 
     private func setUpHeader() {
         let theme = Theme.current
@@ -236,10 +235,7 @@ final class ConversationViewController: UIViewController, HidesNavigationBar {
         scrim.isUserInteractionEnabled = false
         header.onTap = { [weak self] in self?.headerTapped() }
         header.onBack = { [weak self] in self?.goBack() }
-        backButton.setTint(theme.centerChannelColor)
-        backButton.accessibilityLabel = "Back"
-        backButton.addAction(UIAction { [weak self] _ in self?.goBack() }, for: .touchUpInside)
-        [scrim, header, backButton].forEach(view.addSubview)
+        [scrim, header].forEach(view.addSubview)
         if rootId == nil {
             Task {
                 memberCount = (try? await session.client.channelStats(id: channelId))?.memberCount
@@ -267,26 +263,15 @@ final class ConversationViewController: UIViewController, HidesNavigationBar {
         return nav.viewControllers.first !== self || splitViewController?.isCollapsed == true
     }
 
-    /// Lays out the pill, Back and the scrim, and keeps the newest messages clear of them.
+    /// Lays out the pill and the scrim, and keeps the newest messages clear of them.
     private func layoutHeader() {
         guard view.window != nil else { return }
-        let window = view.window?.safeAreaInsets ?? .zero
         // The navigation container's top inset, not ours: ours still counts the navigation bar on
         // the first layout pass, before it hides, which made the pill start low and then jump up.
         let safeTop = navigationController?.view.safeAreaInsets.top ?? view.safeAreaInsets.top
         let area = collectionView.frame          // the chat column (excludes a thread pane)
         let top = max(safeTop, 8) + (safeTop > 0 ? 2 : 0)
-        // On the Duo, Back goes in the status-bar column; elsewhere it's the pill's leading slot.
-        let backInColumn = showsBack && window.right >= 70
-        header.showsBack = showsBack && !backInColumn
-        backButton.isHidden = !backInColumn
-        if backInColumn {
-            // The status icons are centred 48pt in from the edge on both Duo screens (not in the
-            // middle of the safe-area column). On the outer screen they sit lower, under the camera.
-            let size = GlassCircleButton.size
-            let y: CGFloat = view.bounds.width < 600 ? 170 : 116
-            backButton.frame = CGRect(x: (view.bounds.width - 48 - size / 2).rounded(), y: y, width: size, height: size)
-        }
+        header.showsBack = showsBack
         // On the messages' grid: the pill's leading slot over the avatars, its title over the names.
         let inset = PostLayout.side - GlassHeaderView.padding
         header.frame = CGRect(x: area.minX + inset, y: top, width: area.width - 2 * inset, height: GlassHeaderView.height)

@@ -38,8 +38,7 @@ private final class CapsuleBlurView: UIVisualEffectView {
 /// The conversation's floating title pill: channel icon, name and member count on glass over the
 /// messages. Tapping it opens the channel menu.
 ///
-/// It sits on the messages' grid: the leading slot (Back on a phone, else the channel icon or the
-/// DM avatar) is centred on the avatar column, and the title starts where names do.
+/// It sits on the messages' grid: the leading slot (Back, else the channel icon or the DM avatar) is centred on the avatar column, and the title starts where names do.
 final class GlassHeaderView: UIView {
     var onTap: (() -> Void)?
     var onBack: (() -> Void)?
@@ -178,39 +177,6 @@ private final class TitleArea: UIControl {
         setContentHuggingPriority(.defaultLow, for: .horizontal)
         isAccessibilityElement = true
         accessibilityTraits = .button
-    }
-
-    override var isHighlighted: Bool { didSet { alpha = isHighlighted ? 0.6 : 1 } }
-}
-
-/// A round glass button (Back), placed beside the title pill or in the Duo's side column.
-final class GlassCircleButton: UIControl {
-    private let glass = Glass.make(interactive: true)
-    private let image = UIImageView()
-    static let size: CGFloat = 48
-
-    init(icon: String) {
-        super.init(frame: CGRect(x: 0, y: 0, width: Self.size, height: Self.size))
-        glass.frame = bounds
-        glass.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        glass.isUserInteractionEnabled = false
-        addSubview(glass)
-        image.image = CompassIcon.image(icon, size: 24)
-        image.contentMode = .center
-        image.frame = bounds
-        image.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        glass.contentView.addSubview(image)
-        isAccessibilityElement = true
-        accessibilityTraits = .button
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
-
-    /// Icon colour; also matches the glass to the theme's light/dark.
-    func setTint(_ color: UIColor) {
-        image.tintColor = color
-        overrideUserInterfaceStyle = Glass.style
     }
 
     override var isHighlighted: Bool { didSet { alpha = isHighlighted ? 0.6 : 1 } }
