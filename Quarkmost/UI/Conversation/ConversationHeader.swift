@@ -37,23 +37,49 @@ private final class CapsuleBlurView: UIVisualEffectView {
 
 /// The conversation's floating title pill: channel icon, name and member count on glass over the
 /// messages. Tapping it opens the channel menu.
+///
+/// It sits on the messages' grid: the leading slot (Back on a phone, else the channel icon or the
+/// DM avatar) is centred on the avatar column, and the title starts where names do.
 final class GlassHeaderView: UIView {
     var onTap: (() -> Void)?
+    var onBack: (() -> Void)?
 
     let avatar = AvatarView(size: 28)
     private let glass = Glass.make(interactive: true)
+    private let back = UIButton(type: .system)
+    private let titleArea = TitleArea()
+    private let slotView = UIView()      // the channel icon or DM avatar
     private let icon = UIImageView()
     private let title = UILabel()
     private let subtitle = UILabel()
     private let accessoryHolder = UIStackView()
-    private let row = UIStackView()
+    private var hasIcon = true
 
     static let height: CGFloat = 52
+    /// Inset of the leading slot inside the pill; the pill itself sits this far left of the
+    /// messages' side padding, so the slot lines up with their avatars.
+    static let padding: CGFloat = 8
+    private static let slot = PostLayout.avatar
+    private static let slotGap = PostLayout.textX - PostLayout.side - PostLayout.avatar
+
+    /// Back inside the pill, in the leading slot (in place of the channel icon).
+    var showsBack = false {
+        didSet {
+            back.isHidden = !showsBack
+            updateSlot()
+        }
+    }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         glass.translatesAutoresizingMaskIntoConstraints = false
         addSubview(glass)
+
+        back.setImage(CompassIcon.image("arrow-back-ios", size: 24), for: .normal)
+        back.accessibilityLabel = "Back"
+        back.isHidden = true
+        back.addAction(UIAction { [weak self] _ in self?.onBack?() }, for: .primaryActionTriggered)
+
         let text = UIStackView(arrangedSubviews: [title, subtitle])
         text.axis = .vertical
         for label in [title, subtitle] {
@@ -61,13 +87,25 @@ final class GlassHeaderView: UIView {
             label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         }
         icon.contentMode = .center
-        icon.setContentHuggingPriority(.required, for: .horizontal)
-        icon.widthAnchor.constraint(equalToConstant: 28).isActive = true
-        [avatar, icon, text, accessoryHolder].forEach(row.addArrangedSubview)
+        for v in [icon, avatar] {
+            v.translatesAutoresizingMaskIntoConstraints = false
+            slotView.addSubview(v)
+            NSLayoutConstraint.activate([
+                v.centerXAnchor.constraint(equalTo: slotView.centerXAnchor),
+                v.centerYAnchor.constraint(equalTo: slotView.centerYAnchor),
+            ])
+        }
+        let leading = UIStackView(arrangedSubviews: [slotView, text])
+        leading.spacing = Self.slotGap
+        leading.alignment = .center
+        leading.isUserInteractionEnabled = false
+        titleArea.embed(leading)
+        titleArea.addAction(UIAction { [weak self] _ in self?.onTap?() }, for: .touchUpInside)
+
         accessoryHolder.isHidden = true
         accessoryHolder.setContentHuggingPriority(.required, for: .horizontal)
-        text.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        row.spacing = 10
+        let row = UIStackView(arrangedSubviews: [back, titleArea, accessoryHolder])
+        row.spacing = Self.slotGap
         row.alignment = .center
         row.translatesAutoresizingMaskIntoConstraints = false
         glass.contentView.addSubview(row)
@@ -75,51 +113,74 @@ final class GlassHeaderView: UIView {
             glass.topAnchor.constraint(equalTo: topAnchor), glass.bottomAnchor.constraint(equalTo: bottomAnchor),
             glass.leadingAnchor.constraint(equalTo: leadingAnchor), glass.trailingAnchor.constraint(equalTo: trailingAnchor),
             heightAnchor.constraint(equalToConstant: Self.height),
-            row.leadingAnchor.constraint(equalTo: glass.contentView.leadingAnchor, constant: 14),
+            row.leadingAnchor.constraint(equalTo: glass.contentView.leadingAnchor, constant: Self.padding),
             row.trailingAnchor.constraint(equalTo: glass.contentView.trailingAnchor, constant: -10),
-            row.centerYAnchor.constraint(equalTo: glass.contentView.centerYAnchor),
+            row.topAnchor.constraint(equalTo: glass.contentView.topAnchor),
+            row.bottomAnchor.constraint(equalTo: glass.contentView.bottomAnchor),
+            back.widthAnchor.constraint(equalToConstant: Self.slot),
+            back.heightAnchor.constraint(equalTo: row.heightAnchor),
+            slotView.widthAnchor.constraint(equalToConstant: Self.slot),
+            slotView.heightAnchor.constraint(equalToConstant: Self.slot),
+            titleArea.heightAnchor.constraint(equalTo: row.heightAnchor),
         ])
-        isAccessibilityElement = true
-        accessibilityTraits = .button
-        addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tapped)))
+        // Back, the title (opens the menu) and any accessory, in that order.
+        accessibilityElements = [back, titleArea, accessoryHolder]
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    @objc private func tapped() { onTap?() }
-
     /// `iconName` is a Compass icon; pass nil to show the avatar instead (DMs).
-    func configure(iconName: String?, title titleText: String, subtitle subtitleText: String?, theme: Theme) {
+    func configure(iconName: String?, title titleText: String, subtitle subtitleText: String?,
+                   hint: String, theme: Theme) {
         overrideUserInterfaceStyle = Glass.style
-        icon.isHidden = iconName == nil
-        avatar.isHidden = iconName != nil
+        back.tintColor = theme.centerChannelColor
+        hasIcon = iconName != nil
         if let iconName {
             icon.image = CompassIcon.image(iconName, size: 20)
             icon.tintColor = theme.centerChannelColor.opacity(0.72)
         }
+        updateSlot()
         title.set(titleText, Typography.style(.heading, 200), color: theme.centerChannelColor)
         subtitle.isHidden = subtitleText == nil
         if let subtitleText {
             subtitle.set(subtitleText, Typography.style(.body, 75), color: theme.centerChannelColor.opacity(0.64))
         }
-        accessibilityLabel = [titleText, subtitleText].compactMap { $0 }.joined(separator: ", ")
+        titleArea.accessibilityLabel = [titleText, subtitleText].compactMap { $0 }.joined(separator: ", ")
+        titleArea.accessibilityHint = hint
     }
 
-    /// A trailing control inside the pill (e.g. Follow in threads). The pill is one accessibility
-    /// element, so the control is also offered to VoiceOver as a custom action.
+    /// The leading slot shows Back, or else the channel icon or DM avatar.
+    private func updateSlot() {
+        slotView.isHidden = showsBack
+        icon.isHidden = !hasIcon
+        avatar.isHidden = hasIcon
+    }
+
+    /// A trailing control inside the pill (e.g. Follow in threads).
     func setAccessory(_ control: UIControl?) {
         accessoryHolder.arrangedSubviews.forEach { $0.removeFromSuperview() }
         if let control { accessoryHolder.addArrangedSubview(control) }
         accessoryHolder.isHidden = control == nil
-        accessibilityCustomActions = control.map { control in
-            let name = control.accessibilityLabel ?? (control as? UIButton)?.configuration?.title ?? ""
-            return [UIAccessibilityCustomAction(name: name) { [weak control] _ in
-                control?.sendActions(for: .primaryActionTriggered)
-                return true
-            }]
-        }
     }
+}
+
+/// The tappable title part of the pill; dims while pressed.
+private final class TitleArea: UIControl {
+    func embed(_ content: UIView) {
+        content.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(content)
+        NSLayoutConstraint.activate([
+            content.leadingAnchor.constraint(equalTo: leadingAnchor),
+            content.trailingAnchor.constraint(equalTo: trailingAnchor),
+            content.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
+        setContentHuggingPriority(.defaultLow, for: .horizontal)
+        isAccessibilityElement = true
+        accessibilityTraits = .button
+    }
+
+    override var isHighlighted: Bool { didSet { alpha = isHighlighted ? 0.6 : 1 } }
 }
 
 /// A round glass button (Back), placed beside the title pill or in the Duo's side column.

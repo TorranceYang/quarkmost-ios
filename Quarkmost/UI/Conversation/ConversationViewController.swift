@@ -235,6 +235,7 @@ final class ConversationViewController: UIViewController, HidesNavigationBar {
         scrim.setColor(theme.centerChannelBg)
         scrim.isUserInteractionEnabled = false
         header.onTap = { [weak self] in self?.headerTapped() }
+        header.onBack = { [weak self] in self?.goBack() }
         backButton.setTint(theme.centerChannelColor)
         backButton.accessibilityLabel = "Back"
         backButton.addAction(UIAction { [weak self] _ in self?.goBack() }, for: .touchUpInside)
@@ -275,22 +276,20 @@ final class ConversationViewController: UIViewController, HidesNavigationBar {
         let safeTop = navigationController?.view.safeAreaInsets.top ?? view.safeAreaInsets.top
         let area = collectionView.frame          // the chat column (excludes a thread pane)
         let top = max(safeTop, 8) + (safeTop > 0 ? 2 : 0)
-        backButton.isHidden = !showsBack
-        let size = GlassCircleButton.size
-        var leading = area.minX + 12
-        if !backButton.isHidden {
-            if window.right >= 70 {
-                // In the Duo's status-bar column, under the clock and Wi-Fi. The status icons are centred 48pt in from the edge on both Duo screens (not in the
-                // middle of the safe-area column). On the outer screen they sit lower, under the camera.
-                let centerX = view.bounds.width - 48
-                let y: CGFloat = view.bounds.width < 600 ? 170 : 116
-                backButton.frame = CGRect(x: (centerX - size / 2).rounded(), y: y, width: size, height: size)
-            } else {
-                backButton.frame = CGRect(x: leading, y: top + (GlassHeaderView.height - size) / 2, width: size, height: size)
-                leading = backButton.frame.maxX + 8
-            }
+        // On the Duo, Back goes in the status-bar column; elsewhere it's the pill's leading slot.
+        let backInColumn = showsBack && window.right >= 70
+        header.showsBack = showsBack && !backInColumn
+        backButton.isHidden = !backInColumn
+        if backInColumn {
+            // The status icons are centred 48pt in from the edge on both Duo screens (not in the
+            // middle of the safe-area column). On the outer screen they sit lower, under the camera.
+            let size = GlassCircleButton.size
+            let y: CGFloat = view.bounds.width < 600 ? 170 : 116
+            backButton.frame = CGRect(x: (view.bounds.width - 48 - size / 2).rounded(), y: y, width: size, height: size)
         }
-        header.frame = CGRect(x: leading, y: top, width: max(120, area.maxX - 12 - leading), height: GlassHeaderView.height)
+        // On the messages' grid: the pill's leading slot over the avatars, its title over the names.
+        let inset = PostLayout.side - GlassHeaderView.padding
+        header.frame = CGRect(x: area.minX + inset, y: top, width: area.width - 2 * inset, height: GlassHeaderView.height)
         scrim.frame = CGRect(x: 0, y: 0, width: view.bounds.width, height: header.frame.maxY + 12)
         scrim.setSolidHeight(max(safeTop, header.frame.midY))   // no text fighting the title
         // The list is flipped, so its visual top is the bottom inset.
@@ -305,9 +304,9 @@ final class ConversationViewController: UIViewController, HidesNavigationBar {
         let theme = Theme.current
         let channel = session.channel(channelId)
         let name = channel.map(session.title(for:)) ?? title ?? ""
-        header.accessibilityHint = rootId == nil ? "Opens channel options" : "Opens the channel"
+        let hint = rootId == nil ? "Opens channel options" : "Opens the channel"
         if rootId != nil {
-            header.configure(iconName: "message-text-outline", title: "Thread", subtitle: "in \(name)", theme: theme)
+            header.configure(iconName: "message-text-outline", title: "Thread", subtitle: "in \(name)", hint: hint, theme: theme)
             return
         }
         var subtitle: String?
@@ -331,7 +330,7 @@ final class ConversationViewController: UIViewController, HidesNavigationBar {
             subtitle = memberCountText
         }
         if session.isMuted(channelId) { subtitle = (subtitle.map { $0 + " · " } ?? "") + "Muted" }
-        header.configure(iconName: iconName, title: name, subtitle: subtitle, theme: theme)
+        header.configure(iconName: iconName, title: name, subtitle: subtitle, hint: hint, theme: theme)
     }
 
     private var memberCountText: String? {
