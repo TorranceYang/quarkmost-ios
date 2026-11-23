@@ -89,6 +89,13 @@ final class ConversationViewController: UIViewController, HidesNavigationBar {
         // bar instead, the screen slid up when the bar hid, and the glass header jumped with it.
         edgesForExtendedLayout = .all
         extendedLayoutIncludesOpaqueBars = true
+        // When the bar shows (Back in the Duo's column), it is invisible apart from that button.
+        let clear = UINavigationBarAppearance()
+        clear.configureWithTransparentBackground()
+        navigationItem.standardAppearance = clear
+        navigationItem.scrollEdgeAppearance = clear
+        navigationItem.compactAppearance = clear
+        navigationItem.titleView = UIView()
         let theme = Theme.current
         view.backgroundColor = theme.centerChannelBg
 
@@ -257,6 +264,15 @@ final class ConversationViewController: UIViewController, HidesNavigationBar {
         else { splitViewController?.show(.primary) }
     }
 
+    /// On the iPhone Duo, Back is a system bar button: iOS moves bar buttons into the status-bar
+    /// column and lays them out below the status icons, including an expanded Dynamic Island (a
+    /// call, music), whose size apps can't read. Our own button pinned there got covered by it.
+    /// Not for the thread pane, whose Back closes the pane and stays in its pill.
+    var showsSystemBack: Bool {
+        let window = navigationController?.view.window ?? view.window
+        return onClose == nil && showsBack && (window?.safeAreaInsets.right ?? 0) >= 70
+    }
+
     private var showsBack: Bool {
         if onClose != nil { return true }
         guard let nav = navigationController else { return false }
@@ -271,7 +287,11 @@ final class ConversationViewController: UIViewController, HidesNavigationBar {
         let safeTop = navigationController?.view.safeAreaInsets.top ?? view.safeAreaInsets.top
         let area = collectionView.frame          // the chat column (excludes a thread pane)
         let top = max(safeTop, 8) + (safeTop > 0 ? 2 : 0)
-        header.showsBack = showsBack
+        let systemBack = showsSystemBack
+        header.showsBack = showsBack && !systemBack
+        if systemBack == navigationController?.isNavigationBarHidden {
+            (navigationController as? ThemedNavigationController)?.updateBarVisibility()   // fold/unfold
+        }
         // On the messages' grid: the pill's leading slot over the avatars, its title over the names.
         let inset = PostLayout.side - GlassHeaderView.padding
         header.frame = CGRect(x: area.minX + inset, y: top, width: area.width - 2 * inset, height: GlassHeaderView.height)

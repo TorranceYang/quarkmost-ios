@@ -57,8 +57,20 @@ final class RootSplitViewController: UISplitViewController, UISplitViewControlle
     }
 
     /// The official app's channel header: sidebar color, Metropolis 18 title, white controls.
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        matchInterfaceStyle()
+    }
+
+    /// Light or dark to match the theme, for everything iOS draws itself: Liquid Glass (including
+    /// bar buttons iOS moves into the Duo's status column, outside our views), alerts, the keyboard.
+    private func matchInterfaceStyle() {
+        view.window?.overrideUserInterfaceStyle = Glass.style
+    }
+
     private func applyTheme() {
         let theme = Theme.current
+        matchInterfaceStyle()
         view.backgroundColor = theme.sidebarBg
         channelNav.applyThemedBar()
         detailNav.applyThemedBar()

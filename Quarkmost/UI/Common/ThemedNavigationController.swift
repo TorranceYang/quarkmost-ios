@@ -23,10 +23,7 @@ final class ThemedNavigationController: UINavigationController, UINavigationCont
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         // Folding/unfolding moves screens between navigation stacks without willShow; re-check.
-        if transitionCoordinator == nil, let top = topViewController {
-            let hidden = Self.hidesBar(top)
-            if isNavigationBarHidden != hidden { setNavigationBarHidden(hidden, animated: false) }
-        }
+        updateBarVisibility()
         // The Duo reports its status column as a side safe-area inset (~84pt; a landscape notch is ≤62).
         let insets = view.safeAreaInsets
         let bar = navigationBar
@@ -60,6 +57,7 @@ final class ThemedNavigationController: UINavigationController, UINavigationCont
     func navigationController(_ navigationController: UINavigationController, willShow viewController: UIViewController, animated: Bool) {
         flatten(viewController)
         setNavigationBarHidden(Self.hidesBar(viewController), animated: animated)
+        (navigationController as? ThemedNavigationController)?.updateBarVisibility()   // nested: outer bar
         // A swipe back that's let go: the screen we were on stays, so does its bar state.
         if let coordinator = transitionCoordinator, coordinator.isInteractive {
             coordinator.notifyWhenInteractionChanges { [weak self] context in
@@ -69,11 +67,34 @@ final class ThemedNavigationController: UINavigationController, UINavigationCont
         }
     }
 
+    /// Shows or hides the bar for the top screen, once any transition (ours or a parent's) ends.
+    func updateBarVisibility() {
+        if let coordinator = transitionCoordinator {
+            coordinator.animate(alongsideTransition: nil) { [weak self] _ in self?.updateBarVisibility() }
+            return
+        }
+        // Folded, the detail stack sits inside the list's stack, whose bar is the one on screen.
+        (navigationController as? ThemedNavigationController)?.updateBarVisibility()
+        guard let top = topViewController else { return }
+        let hidden = Self.hidesBar(top)
+        guard isNavigationBarHidden != hidden else { return }
+        flatten(top)
+        setNavigationBarHidden(hidden, animated: false)
+    }
+
     /// Whether a screen draws its own header. The navigation controller is the only place the bar
     /// is shown or hidden: screens toggling it themselves raced each other when folding moved them
     /// between stacks, and left the system bar (and its Back button) over the glass header.
     static func hidesBar(_ vc: UIViewController) -> Bool {
-        vc is HidesNavigationBar || vc is UINavigationController
+        let shown = Self.shown(vc)
+        if let own = shown as? HidesNavigationBar { return !own.showsSystemBack }
+        return shown is UINavigationController
+    }
+
+    /// The screen whose items a bar shows for `vc`: a nested navigation stack (the detail stack
+    /// inside the list's when folded) shows its top screen's items in the outer bar.
+    private static func shown(_ vc: UIViewController) -> UIViewController {
+        (vc as? UINavigationController)?.topViewController ?? vc
     }
 
     /// Call again after a screen replaces its bar buttons.
@@ -97,11 +118,16 @@ final class ThemedNavigationController: UINavigationController, UINavigationCont
                 item.leftBarButtonItem = nil
             }
         }
-        let tint = Theme.current.sidebarHeaderTextColor
-        for button in (item.leftBarButtonItems ?? []) + (item.rightBarButtonItems ?? []) {
+        // A screen with its own header that borrows the bar only for Back keeps the system glass on
+        // it (it floats over the chat, in the Duo's status column); elsewhere buttons are flat.
+        let shown = Self.shown(vc)
+        let glassBack = (shown as? HidesNavigationBar)?.showsSystemBack == true
+        let tint = glassBack ? Theme.current.centerChannelColor : Theme.current.sidebarHeaderTextColor
+        let shownItem = shown.navigationItem
+        for button in (shownItem.leftBarButtonItems ?? []) + (shownItem.rightBarButtonItems ?? []) {
             // Without the glass, items no longer pick up the bar's tint; set it on each one.
             button.tintColor = tint
-            if #available(iOS 26.0, *) { button.hidesSharedBackground = true }
+            if #available(iOS 26.0, *) { button.hidesSharedBackground = !glassBack }
         }
     }
 
@@ -110,5 +136,12 @@ final class ThemedNavigationController: UINavigationController, UINavigationCont
     }
 }
 
-/// Screens with their own header; their navigation controller hides the system bar.
-protocol HidesNavigationBar: UIViewController {}
+/// Screens with their own header; their navigation controller hides the system bar, unless the
+/// screen asks for it to carry just its Back button (on a transparent bar).
+protocol HidesNavigationBar: UIViewController {
+    var showsSystemBack: Bool { get }
+}
+
+extension HidesNavigationBar {
+    var showsSystemBack: Bool { false }
+}
