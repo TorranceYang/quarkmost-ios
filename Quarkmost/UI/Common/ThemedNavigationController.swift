@@ -12,6 +12,9 @@ final class ThemedNavigationController: UINavigationController, UINavigationCont
     /// the bar's buttons.
     private let columnCover = UIView()
 
+    /// Bar buttons keep the system Liquid Glass (full-screen sheets) instead of drawing flat.
+    var usesGlassButtons = false
+
     override func viewDidLoad() {
         super.viewDidLoad()
         delegate = self
@@ -121,7 +124,7 @@ final class ThemedNavigationController: UINavigationController, UINavigationCont
         // A screen with its own header that borrows the bar only for Back keeps the system glass on
         // it (it floats over the chat, in the Duo's status column); elsewhere buttons are flat.
         let shown = Self.shown(vc)
-        let glassBack = (shown as? HidesNavigationBar)?.showsSystemBack == true
+        let glassBack = usesGlassButtons || (shown as? HidesNavigationBar)?.showsSystemBack == true
         let tint = glassBack ? Theme.current.centerChannelColor : Theme.current.sidebarHeaderTextColor
         let shownItem = shown.navigationItem
         for button in (shownItem.leftBarButtonItems ?? []) + (shownItem.rightBarButtonItems ?? []) {

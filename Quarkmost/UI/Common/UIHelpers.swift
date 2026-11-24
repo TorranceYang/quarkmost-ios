@@ -302,7 +302,8 @@ extension UIViewController {
     /// Wraps a screen in a themed navigation controller for modal presentation, with a Close button.
     func wrappedForModal() -> UINavigationController {
         let nav = ThemedNavigationController(rootViewController: self)
-        nav.applyThemedBar()
+        nav.usesGlassButtons = true
+        nav.applyModalBar()
         if navigationItem.leftBarButtonItem == nil {
             navigationItem.leftBarButtonItem = UIBarButtonItem(
                 image: CompassIcon.image("close", size: 24), primaryAction: UIAction { [weak nav] _ in nav?.dismiss(animated: true) })
@@ -329,6 +330,23 @@ extension UINavigationController {
         navigationBar.scrollEdgeAppearance = appearance
         navigationBar.compactAppearance = appearance
         navigationBar.tintColor = theme.sidebarHeaderTextColor
+    }
+
+    /// Full-screen sheets: the header is the page's own colour (a sidebar-coloured band looked cut
+    /// off at the Duo's status column), and its buttons keep the system glass.
+    func applyModalBar() {
+        let theme = Theme.current
+        let appearance = UINavigationBarAppearance()
+        appearance.configureWithOpaqueBackground()
+        appearance.backgroundColor = theme.centerChannelBg
+        appearance.shadowColor = .clear
+        appearance.titleTextAttributes = Typography.style(.heading, 300)
+            .attributes(color: theme.centerChannelColor, alignment: .center)
+        appearance.backButtonAppearance.normal.titleTextAttributes = [.foregroundColor: UIColor.clear]
+        navigationBar.standardAppearance = appearance
+        navigationBar.scrollEdgeAppearance = appearance
+        navigationBar.compactAppearance = appearance
+        navigationBar.tintColor = theme.centerChannelColor
     }
 }
 
