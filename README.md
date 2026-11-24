@@ -19,18 +19,19 @@ port of the open-source [Mattermost Mobile](https://github.com/mattermost/matter
 
 ## Screenshots
 
-<p align="center">
-  <img src="docs/screenshots/01-channels.png" width="24%" alt="Channel list">
-  <img src="docs/screenshots/02-conversation.png" width="24%" alt="Conversation with the glass header">
-  <img src="docs/screenshots/03-longpress.png" width="24%" alt="Message actions">
-  <img src="docs/screenshots/04-channel-menu.png" width="24%" alt="Channel menu">
-</p>
-<p align="center">
-  <img src="docs/screenshots/06-duo-unfolded.png" width="64%" alt="iPhone Duo, unfolded: channel list beside the conversation">
-  <img src="docs/screenshots/05-duo-folded.png" width="32%" alt="iPhone Duo, folded: Back in the status-bar column">
-</p>
+### iPhone
 
-<sub>Demo data on a local test server. All people, messages and the team are made up.</sub>
+| Channels | Conversation | Message actions | Channel menu |
+| :---: | :---: | :---: | :---: |
+| <img src="docs/screenshots/01-channels.png" width="170" alt="Channel list with favorites, channels and direct messages"> | <img src="docs/screenshots/02-conversation.png" width="170" alt="Conversation under the glass header"> | <img src="docs/screenshots/03-longpress.png" width="170" alt="Long-press sheet with reactions and message actions"> | <img src="docs/screenshots/04-channel-menu.png" width="170" alt="Glass channel menu opened from the header"> |
+
+### iPhone Duo
+
+| Unfolded | Folded |
+| :---: | :---: |
+| <img src="docs/screenshots/06-duo-unfolded.png" height="350" alt="Channel list beside the conversation on the inner screen"> | <img src="docs/screenshots/05-duo-folded.png" height="350" alt="Conversation on the outer screen, with Back in the status-bar column"> |
+
+<sub>Taken on a local test server. The team, people and messages are made up.</sub>
 
 ## What's different from the official app
 
