@@ -17,6 +17,21 @@ port of the open-source [Mattermost Mobile](https://github.com/mattermost/matter
 >   everyone, the official app is the right choice.
 > - **100% AI** If this bothers you, you should stay far, far way because I cannot vouch for _any_ of the code. 
 
+## Screenshots
+
+<p align="center">
+  <img src="docs/screenshots/01-channels.png" width="24%" alt="Channel list">
+  <img src="docs/screenshots/02-conversation.png" width="24%" alt="Conversation with the glass header">
+  <img src="docs/screenshots/03-longpress.png" width="24%" alt="Message actions">
+  <img src="docs/screenshots/04-channel-menu.png" width="24%" alt="Channel menu">
+</p>
+<p align="center">
+  <img src="docs/screenshots/06-duo-unfolded.png" width="64%" alt="iPhone Duo, unfolded: channel list beside the conversation">
+  <img src="docs/screenshots/05-duo-folded.png" width="32%" alt="iPhone Duo, folded: Back in the status-bar column">
+</p>
+
+<sub>Demo data on a local test server. All people, messages and the team are made up.</sub>
+
 ## What's different from the official app
 
 The app is mostly the same. The screens, layout, themes and behaviour were ported by reading the official app's
@@ -25,6 +40,9 @@ source, so it should look and feel familiar. The differences:
 - **Performance.** Everything loads a lot faster. The message list is native UIKit, with message layout done off the main thread. It also scrolls at the full refresh rate on ProMotion iPhones.
 - **Swipe to reply.** Swipe a message to the left to reply to it. As in the official app, tapping a message
   also opens its thread.
+- **Glass header.** A floating Liquid Glass title bar that messages scroll under. Tap it for channel
+  actions. On the iPhone Duo, Back sits in the status-bar column, where iOS keeps it clear of the
+  Dynamic Island.
 - **iPhone Duo support.** On the inner screen of the foldable iPhone, the channel list and the conversation
   sit side by side. Opening a thread slides the list away so the thread gets the full width. Folding and
   unfolding keeps your place, your draft and any open thread.
