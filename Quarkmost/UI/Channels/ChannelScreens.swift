@@ -548,14 +548,21 @@ final class ChannelInfoViewController: StackScreenViewController {
             config.baseBackgroundColor = active ? theme.buttonBg.opacity(0.08) : theme.centerChannelColor.opacity(0.04)
             config.baseForegroundColor = active ? theme.buttonBg : theme.centerChannelColor.opacity(0.64)
             config.background.cornerRadius = 4
+            config.titleAlignment = .center
+            config.titleLineBreakMode = .byTruncatingTail
+            config.contentInsets = .init(top: 8, leading: 4, bottom: 8, trailing: 4)
+            // One line, centred, shrinking to fit: two-line labels sat left-aligned and lower.
             let b = UIButton(configuration: config, primaryAction: UIAction { [weak self] _ in run(); self?.build() })
+            b.titleLabel?.numberOfLines = 1
+            b.titleLabel?.adjustsFontSizeToFitWidth = true
+            b.titleLabel?.minimumScaleFactor = 0.8
             b.heightAnchor.constraint(equalToConstant: 70).isActive = true
             actions.addArrangedSubview(b)
         }
         box(favorite ? "star" : "star-outline", favorite ? "Favorited" : "Favorite", active: favorite) { session.setFavorite(!favorite, channelId: self.channelId) }
         box(muted ? "bell-off-outline" : "bell-outline", muted ? "Muted" : "Mute", active: muted) { session.setMuted(!muted, channelId: self.channelId) }
         if channel.type == .open || channel.type == .privateChannel {
-            box("account-plus-outline", "Add members", active: false) { [weak self] in
+            box("account-plus-outline", "Add", active: false) { [weak self] in
                 self?.navigationController?.pushViewController(AddMembersViewController(channel: channel), animated: true)
             }
             box("link-variant", "Copy Link", active: false) { [weak self] in
