@@ -156,6 +156,7 @@ final class MenuRow: UIControl {
         addAction(UIAction { [weak self] _ in self?.action?() }, for: .touchUpInside)
     }
 
+
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
@@ -187,14 +188,25 @@ final class MenuRow: UIControl {
 }
 
 /// Base for the settings-like screens: a scrolling vertical stack on the center background.
+/// A scroll view whose content is mostly controls (rows, buttons): touches reach them immediately,
+/// and a drag that starts on one still scrolls.
+final class ControlScrollView: UIScrollView {
+    override func touchesShouldCancel(in view: UIView) -> Bool {
+        view is UIControl ? true : super.touchesShouldCancel(in: view)
+    }
+}
+
 class StackScreenViewController: UIViewController {
-    let scrollView = UIScrollView()
+    let scrollView = ControlScrollView()
     let stack = UIStackView()
 
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = Theme.current.centerChannelBg
         scrollView.alwaysBounceVertical = true
+        // Rows get touches right away. Held back (the default), a quick tap reached a row with its
+        // start and end at once, and the row often didn't treat it as a tap.
+        scrollView.delaysContentTouches = false
         scrollView.keyboardDismissMode = .interactive
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         stack.axis = .vertical
